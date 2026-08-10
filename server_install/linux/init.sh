@@ -795,19 +795,60 @@ ensure_remote_version_cached() {
 
 install_steamcmd() {
     # 修复 SteamCMD Locale (Debian/Ubuntu Root)
-    if [ "$EUID" -eq 0 ] && [ -f /etc/debian_version ] && ! locale -a 2>/dev/null | grep -q "en_US.utf8"; then
-        echo -e "${YELLOW}Fixing SteamCMD Locale (en_US.UTF-8)...${NC}"
-        apt-get update -qq >/dev/null 2>&1
-        apt-get install -y -qq locales >/dev/null 2>&1
-        sed -i 's/# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen 2>/dev/null
-        locale-gen en_US.UTF-8 >/dev/null 2>&1
-    fi
-
     if [ ! -f "${STEAMCMD_DIR}/steamcmd.sh" ]; then
         echo -e "$M_INIT_STEAMCMD"; mkdir -p "${STEAMCMD_DIR}"
-        echo -e "$M_DL_STEAMCMD"
         local tmp="/tmp/steamcmd.tar.gz"
-        if wget -O "$tmp" "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"; then
+        local dl_success=false
+
+        # 让玩家选择下载源
+        echo -e "$M_CHOOSE_STEAMCMD_SRC"
+        echo -e "  1) $M_STEAMCMD_OFFICIAL"
+        echo -e "  2) $M_STEAMCMD_FAST"
+        local dl_choice
+        read -t 5 -p "$M_SELECT_1_2 $M_SELECT_TIMEOUT: " dl_choice
+        [ -z "$dl_choice" ] && dl_choice="2"   # 超时自动选择快速下载
+
+
+        if [ "$dl_choice" == "2" ]; then
+            # 快速下载：复用已有测速 + 镜像列表
+            echo -e "$M_DL_STEAMCMD_FAST"
+            select_best_mirror
+
+            local fast_url="https://github.com/apples1949/SteamCmdLinuxFile/releases/download/steamcmd-latest/package.tar.gz"
+            local try_list=("$BEST_MIRROR")
+            for m in "${MIRRORS[@]}"; do
+                if [ "$m" != "$BEST_MIRROR" ]; then try_list+=("$m"); fi
+            done
+
+            for mirror in "${try_list[@]}"; do
+                local current_url=""
+                if [ "$mirror" == "DIRECT" ]; then
+                    current_url="$fast_url"
+                else
+                    current_url="${mirror}/${fast_url}"
+                fi
+                echo -e "$M_STEAMCMD_MIRROR_TRY $current_url"
+                if wget -O "$tmp" "$current_url" --timeout=15 -q --show-progress 2>&1; then
+                    dl_success=true
+                    break
+                fi
+            done
+
+            if ! $dl_success; then
+                echo -e "$M_STEAMCMD_MIRROR_FAIL"
+                echo -e "$M_DL_STEAMCMD"
+                if wget -O "$tmp" "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"; then
+                    dl_success=true
+                fi
+            fi
+        else
+            echo -e "$M_DL_STEAMCMD"
+            if wget -O "$tmp" "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"; then
+                dl_success=true
+            fi
+        fi
+
+        if $dl_success; then
             echo -e "$M_EXTRACTING"
             tar zxf "$tmp" -C "${STEAMCMD_DIR}"
             rm -f "$tmp"
@@ -815,6 +856,7 @@ install_steamcmd() {
             echo -e "$M_DL_FAIL"; return 1
         fi
     fi
+
 }
 
 deploy_wizard() {
@@ -1728,6 +1770,20 @@ load_i18n() {
         M_INIT_STEAMCMD="${YELLOW}初始化 SteamCMD...${NC}"
         M_DL_STEAMCMD="${CYAN}正在下载 SteamCMD 安装包...${NC}"
         M_EXTRACTING="${CYAN}解压中...${NC}"
+        M_SELECT_TIMEOUT="(5秒无操作自动选择快速下载)"
+        M_CHOOSE_STEAMCMD_SRC="${CYAN}请选择 SteamCMD 下载源:${NC}"
+        M_STEAMCMD_OFFICIAL="Steam 官方源 (steamcdn-a.akamaihd.net)"
+        M_STEAMCMD_FAST="快速下载 (GitHub 镜像加速)"
+        M_DL_STEAMCMD_FAST="${CYAN}正在通过快速源下载 SteamCMD...${NC}"
+        M_STEAMCMD_MIRROR_TRY="${CYAN}尝试镜像:${NC}"
+        M_STEAMCMD_MIRROR_FAIL="${YELLOW}所有镜像失败，回退到官方源...${NC}"
+        M_CHOOSE_STEAMCMD_SRC="${CYAN}请选择 SteamCMD 下载源:${NC}"
+        M_STEAMCMD_OFFICIAL="Steam 官方源 (steamcdn-a.akamaihd.net)"
+        M_STEAMCMD_FAST="快速下载 (GitHub 镜像加速)"
+        M_DL_STEAMCMD_FAST="${CYAN}正在通过快速源下载 SteamCMD...${NC}"
+        M_STEAMCMD_MIRROR_TRY="${CYAN}尝试镜像:${NC}"
+        M_STEAMCMD_MIRROR_FAIL="${YELLOW}所有镜像失败，回退到官方源...${NC}"
+=
         M_SRV_NAME="服务器名称"
         M_NAME_EXIST="${RED}名称已存在${NC}"
         M_INSTALL_DIR="安装目录"
@@ -1899,6 +1955,13 @@ load_i18n() {
         M_INIT_STEAMCMD="${YELLOW}Initializing SteamCMD...${NC}"
         M_DL_STEAMCMD="${CYAN}Downloading SteamCMD...${NC}"
         M_EXTRACTING="${CYAN}Extracting...${NC}"
+        M_SELECT_TIMEOUT="(auto-select fast download in 5s)"
+        M_CHOOSE_STEAMCMD_SRC="${CYAN}Choose SteamCMD download source:${NC}"
+        M_STEAMCMD_OFFICIAL="Steam Official (steamcdn-a.akamaihd.net)"
+        M_STEAMCMD_FAST="Fast Download (GitHub Mirror)"
+        M_DL_STEAMCMD_FAST="${CYAN}Downloading SteamCMD via fast mirror...${NC}"
+        M_STEAMCMD_MIRROR_TRY="${CYAN}Trying mirror:${NC}"
+        M_STEAMCMD_MIRROR_FAIL="${YELLOW}All mirrors failed, falling back to official...${NC}"
         M_SRV_NAME="Server Name"
         M_NAME_EXIST="${RED}Name exists${NC}"
         M_INSTALL_DIR="Install Dir"
